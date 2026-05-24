@@ -1,8 +1,8 @@
 use crate::types::{OgType, WebData};
 use crate::utils::*;
 use async_process::{Child, Command};
-use fantoccini::{elements::Element, Client, ClientBuilder};
-use futures::{future::try_join_all, lock::Mutex};
+use fantoccini::{Client, ClientBuilder};
+use futures::lock::Mutex;
 use http::Method;
 use http_body_util::BodyExt;
 use std::process;
@@ -90,7 +90,7 @@ pub async fn init(address: &str, capabilities: Option<Capabilities>) {
 pub async fn close() -> anyhow::Result<()> {
     if DRIVER.lock().await.is_none() {
         eprintln!("Driver not initialized, skipping close");
-        return;
+        return Ok(());
     }
 
     // fix this clippy lint?
@@ -100,15 +100,15 @@ pub async fn close() -> anyhow::Result<()> {
         .take()
         .ok_or_else(|| anyhow::anyhow!("Can't take DRIVER!"))?
         .close()
-        .await
-        .ok_or_else(|| anyhow::anyhow!("Can't close/kill DRIVER!"))?;
+        .await?;
     CHILD
         .lock()
         .await
         .take()
         .ok_or_else(|| anyhow::anyhow!("Can't take CHILD!"))?
-        .kill()
-        .ok_or_else(|| anyhow::anyhow!("Can't close/kill CHILD!"))?;
+        .kill()?;
+
+    Ok(())
 }
 
 /// Fetches the data from the specified url.
@@ -125,25 +125,22 @@ pub async fn fetch(url: &str) -> anyhow::Result<WebData> {
     data.title = driver.title().await.unwrap_or_default();
 
     // <meta name="description" />
-    data.description = get_single(driver.clone(), "meta[property=\"og:description\"]").await;
+    data.description = get_single(&driver, "meta[property=\"og:description\"]").await;
 
     // <meta property="og:type" />
-    data.r#type = match get_single(driver.clone(), "meta[property=\"og:type\"]").await {
+    data.r#type = match get_single(&driver, "meta[property=\"og:type\"]").await {
         Some(t) => OgType::from_meta(t.as_str()),
         None => OgType::Website,
     };
 
     // <meta property="og:image" />
-    data.image = get_single(driver.clone(), "meta[property=\"og:image\"]").await;
+    data.image = get_single(&driver, "meta[property=\"og:image\"]").await;
 
     // <meta property="book:author" />, <meta property="article:author" />
-    data.author = get_multiple(driver.clone(), "meta[property$=\":author\"]").await;
+    data.author = get_multiple(&driver, "meta[property$=\":author\"]").await;
 
     // <meta name="theme-color" />
-    data.colour = match find(driver.clone(), "meta[name=\"theme-color\"]")
-        .await
-        .first()
-    {
+    data.colour = match find(&driver, "meta[name=\"theme-color\"]").await.first() {
         Some(e) => Some(
             e.attr("value")
                 .await
@@ -221,6 +218,6 @@ pub mod test {
 
         println!("{:?}", data.len());
 
-        close().await;
+        close().await.unwrap();
     }
 }
