@@ -13,20 +13,17 @@ pub(crate) async fn get_single(d: &Client, q: &str) -> Option<String> {
 
     r.unwrap_or_default()
 }
+
 pub(crate) async fn get_multiple(d: &Client, q: &str) -> Vec<String> {
     let e = find(d, q).await;
     let r = try_join_all(e.iter().map(|e| e.attr("content"))).await;
 
-    if r.is_err() {
-        return vec![];
-    }
+    let Ok(r) = r else {
+        return Vec::new();
+    };
 
-    let r = r.unwrap();
-    let v: Vec<String> = r
-        .iter()
+    r.iter()
         .filter(|v| v.is_some())
-        .map(|v| v.as_ref().unwrap().clone())
-        .collect();
-
-    v
+        .filter_map(|v| v.as_ref()?.clone().into())
+        .collect()
 }

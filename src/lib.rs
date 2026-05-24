@@ -41,46 +41,55 @@ pub async fn fetch(url: &str) -> anyhow::Result<WebData> {
     let mut data = WebData::default();
 
     // <title>
-    data.title = find("title").first().unwrap().text().collect();
+    data.title = find("title")
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("Could not find title!"))?
+        .text()
+        .collect();
 
     // <meta name="description" />
     data.description = find("meta[property=\"og:description\"]")
         .first()
-        .map(|e| e.value().attr("content").unwrap().to_string());
+        .and_then(|e| e.value().attr("content")?.to_string().into());
 
     // <meta property="og:type" />
     data.r#type = find("meta[property=\"og:type\"]")
         .first()
-        .map(|e| OgType::from_meta(e.value().attr("content").unwrap()))
+        .and_then(|e| OgType::from_meta(e.value().attr("content")?).into())
         .unwrap_or_default();
 
     // <meta property="og:image" />
     data.image = find("meta[property=\"og:image\"]")
         .first()
-        .map(|e| resolve_url(e.value().attr("content").unwrap(), url));
+        .and_then(|e| resolve_url(e.value().attr("content")?, url).ok());
 
     // <meta property="book:author" />, <meta property="article:author" />
     data.author = find("meta[property$=\":author\"]")
         .iter()
-        .map(|e| e.value().attr("content").unwrap().to_string())
-        .collect();
+        .map(|e| {
+            Ok(e.value()
+                .attr("content")
+                .ok_or_else(|| anyhow::anyhow!("Could not get author!"))?
+                .to_string())
+        })
+        .collect::<anyhow::Result<_>>()?;
 
     // <meta name="theme-color" />
     data.colour = find("meta[name=\"theme-color\"]")
         .first()
-        .map(|e| e.value().attr("content").unwrap().to_string());
+        .and_then(|e| e.value().attr("content")?.to_string().into());
 
     Ok(data)
 }
 
 /// Resolves the given url to an absolute url.
-pub fn resolve_url(url: &str, base: &str) -> String {
+pub fn resolve_url(url: &str, base: &str) -> anyhow::Result<String> {
     if url.starts_with('/') || url.starts_with("./") {
-        let base = Url::parse(base).unwrap().origin().unicode_serialization();
-        return Url::parse(&base).unwrap().join(url).unwrap().to_string();
+        let base = Url::parse(base)?.origin().unicode_serialization();
+        return Ok(Url::parse(&base)?.join(url)?.to_string());
     }
 
-    url.to_string()
+    Ok(url.to_string())
 }
 
 #[cfg(test)]

@@ -87,15 +87,28 @@ pub async fn init(address: &str, capabilities: Option<Capabilities>) {
 
 /// Closes the driver and geckodriver instance.
 /// Without calling this, the geckodriver instance will remain open.
-pub async fn close() {
+pub async fn close() -> anyhow::Result<()> {
     if DRIVER.lock().await.is_none() {
         eprintln!("Driver not initialized, skipping close");
         return;
     }
 
     // fix this clippy lint?
-    DRIVER.lock().await.take().unwrap().close().await.unwrap();
-    CHILD.lock().await.take().unwrap().kill().unwrap();
+    DRIVER
+        .lock()
+        .await
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Can't take DRIVER!"))?
+        .close()
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Can't close/kill DRIVER!"))?;
+    CHILD
+        .lock()
+        .await
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Can't take CHILD!"))?
+        .kill()
+        .ok_or_else(|| anyhow::anyhow!("Can't close/kill CHILD!"))?;
 }
 
 /// Fetches the data from the specified url.
@@ -172,7 +185,11 @@ pub async fn download_file_from(
     let mut result = Vec::new();
     while let Some(frame) = body.frame().await {
         match frame {
-            Ok(frame) if frame.is_data() => result.extend_from_slice(&frame.into_data().unwrap()),
+            Ok(frame) if frame.is_data() => result.extend_from_slice(
+                &frame
+                    .into_data()
+                    .map_err(|_| anyhow::anyhow!("Could not turn byte frame into data!"))?,
+            ),
             _ => continue,
         }
     }

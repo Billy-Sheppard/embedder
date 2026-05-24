@@ -122,9 +122,11 @@ impl Driver {
         let mut result = Vec::new();
         while let Some(frame) = body.frame().await {
             match frame {
-                Ok(frame) if frame.is_data() => {
-                    result.extend_from_slice(&frame.into_data().unwrap())
-                }
+                Ok(frame) if frame.is_data() => result.extend_from_slice(
+                    &frame
+                        .into_data()
+                        .map_err(|_| anyhow::anyhow!("Could not turn byte frame into data!"))?,
+                ),
                 _ => continue,
             }
         }
