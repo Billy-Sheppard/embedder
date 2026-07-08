@@ -1,5 +1,6 @@
 use crate::types::{OgType, WebData};
 use crate::utils::*;
+use anyhow::Context;
 use async_process::{Child, Command};
 use fantoccini::{Client, ClientBuilder};
 use futures::lock::Mutex;
@@ -64,25 +65,27 @@ pub async fn start(
     );
 
     let address = format!("http://localhost:{}", port.unwrap_or(4444));
-    init(&address, capabilities).await;
+    init(&address, capabilities).await?;
 
     Ok(())
 }
 
 /// Initializes the driver with the specified address.
-pub async fn init(address: &str, capabilities: Option<Capabilities>) {
+pub async fn init(address: &str, capabilities: Option<Capabilities>) -> anyhow::Result<()> {
     if DRIVER.lock().await.is_some() {
         eprintln!("Driver already initialized, skipping connection");
-        return;
+        return Ok(());
     }
 
     let driver = ClientBuilder::native()
         .capabilities(capabilities.unwrap_or_default())
         .connect(address)
         .await
-        .expect("Failed to connect to driver");
+        .context("Failed to connect to driver")?;
 
     *DRIVER.lock().await = Some(driver);
+
+    Ok(())
 }
 
 /// Closes the driver and geckodriver instance.
